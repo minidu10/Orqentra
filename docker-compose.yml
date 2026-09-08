@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: orqentra-postgres
+    environment:
+      POSTGRES_DB: orqentra
+      POSTGRES_USER: orqentra
+      POSTGRES_PASSWORD: orqentra
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

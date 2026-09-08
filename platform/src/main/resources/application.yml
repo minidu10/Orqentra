@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: orqentra-platform
+  datasource:
+    url: jdbc:postgresql://localhost:5434/orqentra
+    username: orqentra
+    password: orqentra
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+logging:
+  level:
+    org.hibernate.SQL: debug
