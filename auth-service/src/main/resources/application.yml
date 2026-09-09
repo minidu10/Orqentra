@@ -22,6 +22,35 @@ orqentra:
     secret: ${ORQENTRA_JWT_SECRET:dev-only-secret-change-me-in-production-0123456789}
     ttl: PT1H
 
+management:
+  endpoints:
+    web:
+      exposure:
+        # Prometheus has no JWT, so these are reachable without one. In a real deployment
+        # the actuator would be bound to a separate management port on an internal
+        # network and never routed through the public gateway.
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: never
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      # Micrometer publishes only a summary unless this is on, and histogram_quantile
+      # needs the buckets. Without it the latency panel is permanently empty.
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      # 100% for development. Lower it in production; the rate is configuration.
+      probability: ${TRACING_SAMPLE_RATE:1.0}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+
 logging:
   pattern:
     level: "%5p [%X{requestId:-no-request-id}]"

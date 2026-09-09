@@ -84,6 +84,58 @@ services:
       # The console listens on 8080 internally, which the order service already owns here.
       - "8090:8080"
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    container_name: orqentra-otel-collector
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./observability/otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+    depends_on:
+      - jaeger
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: orqentra-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: orqentra-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=6h
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheusdata:/prometheus
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    container_name: orqentra-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      # 3001, not 3000: the React dev server may want 3000.
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   orderdata:
   inventorydata:
@@ -91,3 +143,5 @@ volumes:
   paymentdata:
   authdata:
   redisdata:
+  prometheusdata:
+  grafanadata:

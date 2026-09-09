@@ -18,6 +18,8 @@ import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 
+import io.micrometer.observation.ObservationRegistry;
+
 import com.orqentra.gateway.correlation.RequestIdFilter;
 import com.orqentra.gateway.support.ProblemResponse;
 
@@ -53,11 +55,18 @@ public class ProxyFilter implements WebFilter {
     private final WebClient webClient;
     private final ProxyRoutes routes;
 
-    public ProxyFilter(ProxyRoutes routes) {
-        // Built directly: Boot 4 does not auto-configure a WebClient.Builder bean, and the
-        // proxy needs no shared customisation.
+    public ProxyFilter(ProxyRoutes routes, ObservationRegistry observationRegistry) {
+        // Built directly: Boot 4 does not auto-configure a WebClient.Builder bean.
+        //
+        // The observation registry has to be attached by hand for the same reason. An
+        // auto-configured builder would carry it already; this one would not, and the
+        // outgoing call would then carry no traceparent header. Every downstream service
+        // would start its own trace and the gateway hop would be missing from all of
+        // them, which is the single easiest way to end up with a trace that looks
+        // plausible and is quietly wrong.
         this.webClient = WebClient.builder()
                 .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
+                .observationRegistry(observationRegistry)
                 .build();
         this.routes = routes;
     }

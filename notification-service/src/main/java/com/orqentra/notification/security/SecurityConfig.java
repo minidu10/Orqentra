@@ -61,7 +61,10 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/health").permitAll()
+                // Prometheus scrapes these and has no token. They are unauthenticated
+                // by necessity, which is why they belong on an internal port in a
+                // real deployment rather than behind the public gateway.
+                .requestMatchers("/actuator/**").permitAll()
                 .anyRequest().authenticated())
             // The resource server installs its own entry point for a bad token, which
             // answers with an empty body. Overriding it here keeps every auth failure in

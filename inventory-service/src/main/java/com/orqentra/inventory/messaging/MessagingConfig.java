@@ -10,6 +10,8 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.springframework.boot.kafka.autoconfigure.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import io.micrometer.observation.ObservationRegistry;
+
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
@@ -30,12 +32,23 @@ public class MessagingConfig {
      * was written, so re-serialising it here would only risk changing it.
      */
     @Bean
-    KafkaTemplate<String, byte[]> outboxKafkaTemplate(KafkaProperties properties) {
+    KafkaTemplate<String, byte[]> outboxKafkaTemplate(KafkaProperties properties,
+                                                      ObservationRegistry observationRegistry) {
         Map<String, Object> config = properties.buildProducerProperties();
         config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
         ProducerFactory<String, byte[]> factory = new DefaultKafkaProducerFactory<>(config);
-        return new KafkaTemplate<>(factory);
+
+        KafkaTemplate<String, byte[]> template = new KafkaTemplate<>(factory);
+
+        // spring.kafka.template.observation-enabled only reaches the auto-configured
+        // template. This one is built by hand, so it has to be switched on explicitly —
+        // and without it there is no producer span, nothing writes a traceparent header
+        // onto the message, and every consumer starts a brand new trace. The saga then
+        // appears in Jaeger as a series of unrelated fragments.
+        template.setObservationEnabled(true);
+        template.setObservationRegistry(observationRegistry);
+        return template;
     }
 
     /**

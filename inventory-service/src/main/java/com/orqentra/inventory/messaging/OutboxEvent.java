@@ -35,6 +35,10 @@ public class OutboxEvent {
     @Column(name = "request_id")
     private String requestId;
 
+    /** W3C traceparent captured when the event was written, not when it is sent. */
+    @Column(name = "traceparent")
+    private String traceparent;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -44,13 +48,14 @@ public class OutboxEvent {
     protected OutboxEvent() {}
 
     public OutboxEvent(String eventId, String topic, String messageKey, String payload,
-                       String typeName, String requestId) {
+                       String typeName, String requestId, String traceparent) {
         this.eventId = eventId;
         this.topic = topic;
         this.messageKey = messageKey;
         this.payload = payload;
         this.typeName = typeName;
         this.requestId = requestId;
+        this.traceparent = traceparent;
     }
 
     public void markPublished() {
@@ -64,6 +69,7 @@ public class OutboxEvent {
     public String getPayload() { return payload; }
     public String getTypeName() { return typeName; }
     public String getRequestId() { return requestId; }
+    public String getTraceparent() { return traceparent; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getPublishedAt() { return publishedAt; }
 }

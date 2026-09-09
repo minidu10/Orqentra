@@ -1,7 +1,6 @@
 package com.orqentra.inventory.stock;
 
 import java.util.List;
-import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,11 +9,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.orqentra.inventory.events.OrderCreatedEvent;
-import com.orqentra.inventory.events.StockRejectedEvent;
 import com.orqentra.inventory.events.StockReleaseRequestedEvent;
-import com.orqentra.inventory.events.StockReservedEvent;
 import com.orqentra.inventory.events.Topics;
-import com.orqentra.inventory.messaging.OutboxWriter;
 import com.orqentra.inventory.messaging.ProcessedEvents;
 
 @Component
@@ -22,57 +18,37 @@ public class InventoryEventListener {
 
     private static final Logger log = LoggerFactory.getLogger(InventoryEventListener.class);
 
-    private static final String ORDER_CREATED_CONSUMER = "inventory.order-created";
     private static final String RELEASE_CONSUMER = "inventory.stock-release-requested";
 
+    private final ReservationProcessor reservations;
     private final InventoryService inventory;
-    private final OutboxWriter outbox;
     private final ProcessedEvents processedEvents;
 
-    public InventoryEventListener(InventoryService inventory,
-                                  OutboxWriter outbox,
+    public InventoryEventListener(ReservationProcessor reservations,
+                                  InventoryService inventory,
                                   ProcessedEvents processedEvents) {
+        this.reservations = reservations;
         this.inventory = inventory;
-        this.outbox = outbox;
         this.processedEvents = processedEvents;
     }
 
     /**
-     * One transaction covers the dedupe claim, the stock deduction and the outbox row, so
-     * a redelivery cannot deduct twice and a crash cannot deduct without producing an event.
+     * Deliberately not transactional itself. The reservation and the rejection each need
+     * their own transaction: a shortage must roll the deduction back, and the rejection
+     * must survive that rollback. Wrapping both in one transaction here would let the
+     * failed reservation poison the rejection, which is a failure that leaves no trace in
+     * any log — the order simply never moves.
      */
     @KafkaListener(topics = Topics.ORDER_CREATED)
-    @Transactional
     public void onOrderCreated(OrderCreatedEvent event) {
-        if (!processedEvents.claim(event.eventId(), ORDER_CREATED_CONSUMER)) {
-            log.info("Skipping already processed order.created event {}", event.eventId());
-            return;
-        }
-
-        log.info("Order created {}, reserving {} line(s)",
-                event.orderReference(), event.items().size());
-
-        List<DeductRequest.Line> lines = event.items().stream()
-                .map(item -> new DeductRequest.Line(item.sku(), item.quantity()))
-                .toList();
-
         try {
-            inventory.deduct(lines);
+            reservations.reserve(event);
         } catch (InsufficientStockException ex) {
-            // A shortage is a normal business outcome, so it travels back as an event.
-            // Nothing broader is caught here: a database fault must propagate so the error
+            // A shortage is a normal business outcome and travels back as an event.
+            // Nothing broader is caught: a database fault must propagate so the error
             // handler can retry and, if it never succeeds, route the record to the DLQ.
-            log.info("Rejecting order {}: {}", event.orderReference(), ex.getMessage());
-            String rejectedId = UUID.randomUUID().toString();
-            outbox.append(Topics.STOCK_REJECTED, event.orderReference(), rejectedId,
-                    new StockRejectedEvent(rejectedId, event.orderReference(), ex.getMessage()));
-            return;
+            reservations.reject(event, ex.getMessage());
         }
-
-        log.info("Reserved stock for order {}", event.orderReference());
-        String reservedId = UUID.randomUUID().toString();
-        outbox.append(Topics.STOCK_RESERVED, event.orderReference(), reservedId,
-                new StockReservedEvent(reservedId, event.orderReference(), event.amount()));
     }
 
     /**

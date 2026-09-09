@@ -15,6 +15,7 @@ import com.orqentra.order.events.OrderCreatedEvent;
 import com.orqentra.order.events.StockReleaseRequestedEvent;
 import com.orqentra.order.events.Topics;
 import com.orqentra.order.messaging.OutboxWriter;
+import com.orqentra.order.metrics.SagaMetrics;
 import com.orqentra.order.security.CurrentUser;
 
 @Service
@@ -24,15 +25,18 @@ public class OrderService {
     private final CatalogService catalog;
     private final OutboxWriter outbox;
     private final CurrentUser currentUser;
+    private final SagaMetrics sagaMetrics;
 
     public OrderService(OrderRepository orders,
                         CatalogService catalog,
                         OutboxWriter outbox,
-                        CurrentUser currentUser) {
+                        CurrentUser currentUser,
+                        SagaMetrics sagaMetrics) {
         this.orders = orders;
         this.catalog = catalog;
         this.outbox = outbox;
         this.currentUser = currentUser;
+        this.sagaMetrics = sagaMetrics;
     }
 
     @Transactional
@@ -70,6 +74,8 @@ public class OrderService {
                 order.getTotal(),
                 eventItems));
 
+        sagaMetrics.sagaStarted(order.getReference());
+
         return OrderResponse.from(order);
     }
 
@@ -81,6 +87,7 @@ public class OrderService {
     @Transactional
     public void markConfirmed(String reference) {
         require(reference).confirm();
+        sagaMetrics.sagaFinished(reference, SagaMetrics.CONFIRMED);
     }
 
     /**
@@ -90,6 +97,7 @@ public class OrderService {
     @Transactional
     public void cancelForRejectedStock(String reference, String reason) {
         require(reference).cancel(reason);
+        sagaMetrics.sagaFinished(reference, SagaMetrics.CANCELLED_STOCK);
     }
 
     /**
@@ -112,6 +120,8 @@ public class OrderService {
         String eventId = UUID.randomUUID().toString();
         outbox.append(Topics.STOCK_RELEASE_REQUESTED, reference, eventId,
                 new StockReleaseRequestedEvent(eventId, reference, items, reason));
+
+        sagaMetrics.sagaFinished(reference, SagaMetrics.CANCELLED_PAYMENT);
     }
 
     /**

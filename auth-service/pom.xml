@@ -48,6 +48,32 @@
 			<artifactId>postgresql</artifactId>
 			<scope>runtime</scope>
 		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-opentelemetry</artifactId>
+			<exclusions>
+				<!--
+				  Traces go over OTLP, metrics do not. The starter also brings an OTLP
+				  metric registry, which pushed every meter to the collector as well as
+				  serving it for scraping. Prometheus then had two copies of each series
+				  and every counter read exactly double. Excluding the registry is the
+				  unambiguous fix; the property alone did not stop the push.
+				-->
+				<exclusion>
+					<groupId>io.micrometer</groupId>
+					<artifactId>micrometer-registry-otlp</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-registry-prometheus</artifactId>
+		</dependency>
+
 	</dependencies>
 
 	<build>

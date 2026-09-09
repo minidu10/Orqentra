@@ -86,7 +86,7 @@ public class SecurityConfig {
             .authorizeExchange(exchange -> exchange
                 .pathMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                 .pathMatchers("/api/auth/**").permitAll()
-                .pathMatchers("/actuator/health").permitAll()
+                .pathMatchers("/actuator/**").permitAll()
                 // The same rule the order service enforces. Checking it here means a
                 // non-admin request is refused at the edge instead of travelling further.
                 .pathMatchers("/api/admin/**").hasRole("ADMIN")

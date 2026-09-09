@@ -1,0 +1,283 @@
+{
+  "uid": "orqentra-overview",
+  "title": "Orqentra — service and saga health",
+  "tags": ["orqentra"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Is anything wrong right now",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Consumer lag (max)",
+      "description": "The number that matters most. Everything can look healthy while orders fall minutes behind.",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 5, "w": 5, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 5 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "max(orqentra_kafka_consumer_lag)", "legendFormat": "max lag", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Outbox pending (max)",
+      "description": "Rising means events are written but never delivered, and nothing else reports it.",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 5, "w": 5, "x": 5, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 5 },
+              { "color": "red", "value": 25 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "max(orqentra_outbox_pending)", "legendFormat": "pending", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Dead letter messages",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 5, "w": 5, "x": 10, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(orqentra_dlq_messages)", "legendFormat": "parked", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "5xx rate",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 5, "w": 4, "x": 15, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.1 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(rate(http_server_requests_seconds_count{status=~\"5..\"}[1m]))", "legendFormat": "5xx/s", "refId": "A" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Services up",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 5, "w": 5, "x": 19, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 5 },
+              { "color": "green", "value": 6 }
+            ]
+          }
+        }
+      },
+      "options": { "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        { "expr": "sum(up{job=\"orqentra-services\"})", "legendFormat": "up", "refId": "A" }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Traffic and latency",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Request rate by service",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        {
+          "expr": "sum by (application) (rate(http_server_requests_seconds_count[1m]))",
+          "legendFormat": "{{application}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error rate by service (4xx and 5xx)",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        {
+          "expr": "sum by (application, status) (rate(http_server_requests_seconds_count{status=~\"[45]..\"}[1m]))",
+          "legendFormat": "{{application}} {{status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP latency p50 / p95 / p99",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 15 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(http_server_requests_seconds_bucket[5m])))",
+          "legendFormat": "p50", "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket[5m])))",
+          "legendFormat": "p95", "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket[5m])))",
+          "legendFormat": "p99", "refId": "C"
+        }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Event pipeline",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Kafka consumer lag by group and topic",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "orqentra_kafka_consumer_lag",
+          "legendFormat": "{{group}} · {{topic}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Outbox depth by service",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 9, "w": 6, "x": 12, "y": 24 },
+      "targets": [
+        {
+          "expr": "orqentra_outbox_pending",
+          "legendFormat": "{{application}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Dead letter messages by topic",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 9, "w": 6, "x": 18, "y": 24 },
+      "targets": [
+        { "expr": "orqentra_dlq_messages", "legendFormat": "{{topic}}", "refId": "A" }
+      ]
+    },
+
+    {
+      "type": "row",
+      "title": "Saga outcomes",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Saga outcomes over time",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 34 },
+      "targets": [
+        {
+          "expr": "sum by (result) (rate(orqentra_saga_outcome_total[5m]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Saga outcomes (total)",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 34 },
+      "options": { "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "expr": "sum by (result) (orqentra_saga_outcome_total)",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Saga duration, order accepted to terminal state",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 34 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(orqentra_saga_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95", "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(orqentra_saga_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50", "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Open SSE connections",
+      "datasource": { "type": "prometheus", "uid": "PBFA97CFB590B2093" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 42 },
+      "targets": [
+        { "expr": "orqentra_sse_connections", "legendFormat": "live clients", "refId": "A" }
+      ]
+    }
+  ]
+}

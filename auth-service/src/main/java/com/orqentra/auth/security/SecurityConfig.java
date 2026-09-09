@@ -56,7 +56,10 @@ public class SecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
-                .requestMatchers("/actuator/health").permitAll()
+                // Prometheus scrapes these and has no token. They are unauthenticated
+                // by necessity, which is why they belong on an internal port in a
+                // real deployment rather than behind the public gateway.
+                .requestMatchers("/actuator/**").permitAll()
                 .anyRequest().authenticated())
             .oauth2ResourceServer(oauth2 -> oauth2
                 .jwt(Customizer.withDefaults())

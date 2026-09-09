@@ -77,6 +77,50 @@ orders, reach `/api/admin/**`, and subscribe to every restaurant's event stream.
 `.\watch-stream.ps1` logs in and tails the SSE stream in a terminal, which is useful
 alongside the UI when you want to see the raw events.
 
+## Observability
+
+| Tool | URL | What it is for |
+|---|---|---|
+| Jaeger | `http://localhost:16686` | One order, one trace, across every service |
+| Prometheus | `http://localhost:9090` | Raw metrics and target health |
+| Grafana | `http://localhost:3001` | The dashboard below (anonymous viewer, or admin/admin) |
+| OTel collector | `:4318` OTLP in | Receives traces and forwards them to Jaeger |
+
+Everything comes up with `docker compose up -d`; the datasource and the dashboard are
+provisioned from files in `observability/`, so nothing is lost to `docker compose down -v`.
+
+### The dashboard
+
+`Orqentra — service and saga health`. The top row answers "is anything wrong right now"
+without scrolling: consumer lag, outbox depth, dead letter count, 5xx rate, services up.
+Below that: request and error rate by service, p50/p95/p99 latency, consumer lag by group
+and topic, outbox depth, saga outcomes and duration, and open SSE connections.
+
+Consumer lag is the one to watch. Every service can be up and every request fast while
+orders quietly fall minutes behind because one consumer stopped keeping pace.
+
+### Finding one order's trace
+
+1. Place an order and note the reference from the response.
+2. Open Jaeger, choose service `orqentra-api-gateway`, operation `http post`, and Find Traces.
+3. The saga is a single trace, roughly 26-30 spans across five services:
+
+```
+[api-gateway]  http post
+  [order-service]  http post /api/orders
+    [order-service]  outbox publish order.created
+      [inventory-service]  order.created process
+        [inventory-service]  outbox publish stock.reserved
+          [payment-service]  stock.reserved process
+            [payment-service]  outbox publish payment.succeeded
+              [order-service]  payment.succeeded process
+```
+
+The correlation id is still there and still separate: grep any service log for the
+`X-Request-Id` value to read the story in words, and use the trace to see the shape and
+the timings.
+
+
 ## Roadmap
 
 - [x] Catalog with Flyway-managed schema
@@ -87,4 +131,4 @@ alongside the UI when you want to see the raw events.
 - [x] Idempotent consumers and transactional outbox
 - [x] Retries and dead letter queue
 - [x] Auth, API gateway, React UI
-- [ ] Tracing and metrics
+- [x] Tracing and metrics
