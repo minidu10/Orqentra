@@ -9,22 +9,23 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.orqentra.order.catalog.CatalogService;
-import com.orqentra.order.inventory.InventoryClient;
-import com.orqentra.order.inventory.StockLine;
+import com.orqentra.order.events.EventPublisher;
+import com.orqentra.order.events.OrderCreatedEvent;
+import com.orqentra.order.events.Topics;
 
 @Service
 public class OrderService {
 
     private final OrderRepository orders;
     private final CatalogService catalog;
-    private final InventoryClient inventory;
+    private final EventPublisher events;
 
     public OrderService(OrderRepository orders,
                         CatalogService catalog,
-                        InventoryClient inventory) {
+                        EventPublisher events) {
         this.orders = orders;
         this.catalog = catalog;
-        this.inventory = inventory;
+        this.events = events;
     }
 
     @Transactional
@@ -37,26 +38,45 @@ public class OrderService {
         }
 
         Order order = new Order(UUID.randomUUID().toString(), request.restaurantId());
-        List<StockLine> stockLines = new ArrayList<>();
+        List<OrderCreatedEvent.Item> eventItems = new ArrayList<>();
 
         for (PlaceOrderRequest.Line line : request.items()) {
             if (line.quantity() <= 0) {
                 throw new IllegalArgumentException("Quantity must be positive for " + line.sku());
             }
 
-            // Price lookup stays ahead of the inventory call so an unknown SKU fails
-            // before any stock is touched.
+            // Price lookup stays ahead of the publish so an unknown SKU still fails with a
+            // 404 before any event leaves this service.
             BigDecimal unitPrice = catalog.priceOf(line.sku());
-            stockLines.add(new StockLine(line.sku(), line.quantity()));
+            eventItems.add(new OrderCreatedEvent.Item(line.sku(), line.quantity()));
             order.addItem(line.sku(), line.quantity(), unitPrice);
         }
 
-        inventory.deduct(stockLines);
-
-        order.confirm();
+        // The order is saved PENDING. Inventory decides the outcome asynchronously, so
+        // placing an order no longer depends on the inventory service being up.
         orders.save(order);
 
+        events.publish(Topics.ORDER_CREATED, order.getReference(), new OrderCreatedEvent(
+                UUID.randomUUID().toString(),
+                order.getReference(),
+                order.getRestaurantId(),
+                eventItems));
+
         return OrderResponse.from(order);
+    }
+
+    @Transactional
+    public void markConfirmed(String reference) {
+        orders.findByReference(reference)
+                .orElseThrow(() -> new UnknownOrderException(reference))
+                .confirm();
+    }
+
+    @Transactional
+    public void markCancelled(String reference) {
+        orders.findByReference(reference)
+                .orElseThrow(() -> new UnknownOrderException(reference))
+                .cancel();
     }
 
     @Transactional(readOnly = true)

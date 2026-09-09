@@ -8,6 +8,8 @@ import org.springframework.data.repository.query.Param;
 
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
+    Optional<Order> findByReference(String reference);
+
     @Query("select o from Order o left join fetch o.items where o.reference = :reference")
     Optional<Order> findByReferenceWithItems(@Param("reference") String reference);
 }

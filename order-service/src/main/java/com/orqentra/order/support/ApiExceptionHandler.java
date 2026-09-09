@@ -6,22 +6,10 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.orqentra.order.catalog.UnknownSkuException;
-import com.orqentra.order.inventory.InsufficientStockException;
-import com.orqentra.order.inventory.InventoryUnavailableException;
 import com.orqentra.order.ordering.UnknownOrderException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
-
-    @ExceptionHandler(InsufficientStockException.class)
-    public ProblemDetail insufficientStock(InsufficientStockException ex) {
-        return problem(HttpStatus.CONFLICT, "Insufficient stock", ex.getMessage());
-    }
-
-    @ExceptionHandler(InventoryUnavailableException.class)
-    public ProblemDetail inventoryUnavailable(InventoryUnavailableException ex) {
-        return problem(HttpStatus.SERVICE_UNAVAILABLE, "Inventory unavailable", ex.getMessage());
-    }
 
     @ExceptionHandler(UnknownSkuException.class)
     public ProblemDetail unknownSku(UnknownSkuException ex) {
