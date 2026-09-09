@@ -27,8 +27,12 @@ spring:
       group-id: inventory-service
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+      # Wrapping the Jackson deserializer means a bad payload surfaces as a failed
+      # record the error handler can route to the DLQ, instead of an exception the
+      # container cannot recover from.
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
         spring.json.trusted.packages: "com.orqentra.*"
         spring.json.type.mapping: "orderCreated:com.orqentra.inventory.events.OrderCreatedEvent,stockReserved:com.orqentra.inventory.events.StockReservedEvent,stockRejected:com.orqentra.inventory.events.StockRejectedEvent,paymentSucceeded:com.orqentra.inventory.events.PaymentSucceededEvent,paymentFailed:com.orqentra.inventory.events.PaymentFailedEvent,stockReleaseRequested:com.orqentra.inventory.events.StockReleaseRequestedEvent"
 

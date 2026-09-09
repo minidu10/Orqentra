@@ -27,10 +27,18 @@ spring:
       group-id: order-service
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+      # Wrapping the Jackson deserializer means a bad payload surfaces as a failed
+      # record the error handler can route to the DLQ, instead of an exception the
+      # container cannot recover from.
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
         spring.json.trusted.packages: "com.orqentra.*"
         spring.json.type.mapping: "orderCreated:com.orqentra.order.events.OrderCreatedEvent,stockReserved:com.orqentra.order.events.StockReservedEvent,stockRejected:com.orqentra.order.events.StockRejectedEvent,paymentSucceeded:com.orqentra.order.events.PaymentSucceededEvent,paymentFailed:com.orqentra.order.events.PaymentFailedEvent,stockReleaseRequested:com.orqentra.order.events.StockReleaseRequestedEvent"
+
+orders:
+  # A saga sitting in a non-terminal state longer than this is reported as stuck.
+  stuck-after: PT2M
 
 logging:
   level:

@@ -84,3 +84,23 @@ GET {{inventory}}/api/inventory/SKU-003
 
 ### No payment was ever attempted -> 404
 GET {{payment}}/api/payments/{{rejectedOrder.response.body.$.reference}}
+
+### ==================== Phase 5: reliability ====================
+
+# Dead letter topics are named after the original with a .dlq suffix. A record lands there
+# after three attempts with exponential backoff, or immediately if its payload could never
+# be deserialised.
+
+### Dead letter topics and their message counts
+GET {{order}}/api/admin/dlq/topics
+
+### Messages in one dead letter topic, with the failure reason from the exception headers
+GET {{order}}/api/admin/dlq/order.created.dlq
+
+### Replay a dead letter topic back to the topic it failed on.
+# Safe because every listener claims the eventId in the same transaction as its work, so a
+# replayed event that already succeeded is skipped rather than applied twice.
+POST {{order}}/api/admin/dlq/order.created.dlq/replay
+
+### Orders stuck in a non-terminal state for longer than orders.stuck-after
+GET {{order}}/api/admin/stuck-orders

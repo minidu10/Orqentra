@@ -9,24 +9,24 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.orqentra.order.catalog.CatalogService;
-import com.orqentra.order.events.EventPublisher;
 import com.orqentra.order.events.OrderCreatedEvent;
 import com.orqentra.order.events.StockReleaseRequestedEvent;
 import com.orqentra.order.events.Topics;
+import com.orqentra.order.messaging.OutboxWriter;
 
 @Service
 public class OrderService {
 
     private final OrderRepository orders;
     private final CatalogService catalog;
-    private final EventPublisher events;
+    private final OutboxWriter outbox;
 
     public OrderService(OrderRepository orders,
                         CatalogService catalog,
-                        EventPublisher events) {
+                        OutboxWriter outbox) {
         this.orders = orders;
         this.catalog = catalog;
-        this.events = events;
+        this.outbox = outbox;
     }
 
     @Transactional
@@ -46,8 +46,8 @@ public class OrderService {
                 throw new IllegalArgumentException("Quantity must be positive for " + line.sku());
             }
 
-            // Price lookup stays ahead of the publish so an unknown SKU still fails with a
-            // 404 before any event leaves this service.
+            // Price lookup stays ahead of the outbox write so an unknown SKU still fails
+            // with a 404 before any event is recorded.
             BigDecimal unitPrice = catalog.priceOf(line.sku());
             eventItems.add(new OrderCreatedEvent.Item(line.sku(), line.quantity()));
             order.addItem(line.sku(), line.quantity(), unitPrice);
@@ -55,8 +55,11 @@ public class OrderService {
 
         orders.save(order);
 
-        events.publish(Topics.ORDER_CREATED, order.getReference(), new OrderCreatedEvent(
-                UUID.randomUUID().toString(),
+        // The order row and the outbox row commit together, so the window where an order
+        // exists but its event was never produced is gone.
+        String eventId = UUID.randomUUID().toString();
+        outbox.append(Topics.ORDER_CREATED, order.getReference(), eventId, new OrderCreatedEvent(
+                eventId,
                 order.getReference(),
                 order.getRestaurantId(),
                 order.getTotal(),
@@ -76,7 +79,7 @@ public class OrderService {
     }
 
     /**
-     * Cancels after a stock rejection. No release is published: nothing was ever deducted,
+     * Cancels after a stock rejection. No release is written: nothing was ever deducted,
      * and restoring stock that was never taken would inflate the inventory.
      */
     @Transactional
@@ -101,9 +104,9 @@ public class OrderService {
                 .map(i -> new StockReleaseRequestedEvent.Item(i.getSku(), i.getQuantity()))
                 .toList();
 
-        events.publish(Topics.STOCK_RELEASE_REQUESTED, reference,
-                new StockReleaseRequestedEvent(UUID.randomUUID().toString(),
-                        reference, items, reason));
+        String eventId = UUID.randomUUID().toString();
+        outbox.append(Topics.STOCK_RELEASE_REQUESTED, reference, eventId,
+                new StockReleaseRequestedEvent(eventId, reference, items, reason));
     }
 
     @Transactional(readOnly = true)
