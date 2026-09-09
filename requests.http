@@ -1,0 +1,104 @@
+@order = http://localhost:8080
+@inventory = http://localhost:8081
+
+### List products
+GET {{order}}/api/products
+
+### Get one product
+GET {{order}}/api/products/SKU-001
+
+### Unknown product -> 404
+GET {{order}}/api/products/SKU-999
+
+### Stock for SKU-001 -> 100
+GET {{inventory}}/api/inventory/SKU-001
+
+### Stock for SKU-003 -> 8 (deliberately low)
+GET {{inventory}}/api/inventory/SKU-003
+
+### Place a valid order -> 201 CONFIRMED, total 29200.00
+# @name placeOrder
+POST {{order}}/api/orders
+Content-Type: application/json
+
+{
+  "restaurantId": "REST-42",
+  "items": [
+    { "sku": "SKU-001", "quantity": 2 },
+    { "sku": "SKU-002", "quantity": 1 }
+  ]
+}
+
+### Stock for SKU-001 again -> 98, proving the call crossed service boundaries
+GET {{inventory}}/api/inventory/SKU-001
+
+### Read the order back
+GET {{order}}/api/orders/{{placeOrder.response.body.$.reference}}
+
+### Unknown order -> 404
+GET {{order}}/api/orders/does-not-exist
+
+### Order 999 of SKU-003 -> 409 Insufficient stock
+POST {{order}}/api/orders
+Content-Type: application/json
+
+{
+  "restaurantId": "REST-42",
+  "items": [
+    { "sku": "SKU-003", "quantity": 999 }
+  ]
+}
+
+### SKU-003 still 8 after the rejection
+GET {{inventory}}/api/inventory/SKU-003
+
+### Empty item list -> 400
+POST {{order}}/api/orders
+Content-Type: application/json
+
+{
+  "restaurantId": "REST-42",
+  "items": []
+}
+
+### Negative quantity -> 400
+POST {{order}}/api/orders
+Content-Type: application/json
+
+{
+  "restaurantId": "REST-42",
+  "items": [
+    { "sku": "SKU-001", "quantity": -3 }
+  ]
+}
+
+### Unknown SKU -> 404, before any stock is touched
+POST {{order}}/api/orders
+Content-Type: application/json
+
+{
+  "restaurantId": "REST-42",
+  "items": [
+    { "sku": "SKU-999", "quantity": 1 }
+  ]
+}
+
+### Direct deduction against the inventory service -> 204
+POST {{inventory}}/api/inventory/deductions
+Content-Type: application/json
+
+{
+  "items": [
+    { "sku": "SKU-002", "quantity": 5 }
+  ]
+}
+
+### Direct release, putting those 5 back -> 204
+POST {{inventory}}/api/inventory/releases
+Content-Type: application/json
+
+{
+  "items": [
+    { "sku": "SKU-002", "quantity": 5 }
+  ]
+}

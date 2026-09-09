@@ -1,0 +1,23 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: orqentra-order-service
+  datasource:
+    url: jdbc:postgresql://localhost:5434/orders
+    username: orqentra
+    password: orqentra
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+inventory:
+  base-url: http://localhost:8081
+
+logging:
+  level:
+    org.hibernate.SQL: debug

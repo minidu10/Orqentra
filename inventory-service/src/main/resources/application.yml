@@ -1,0 +1,20 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: orqentra-inventory-service
+  datasource:
+    url: jdbc:postgresql://localhost:5435/inventory
+    username: orqentra
+    password: orqentra
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+logging:
+  level:
+    org.hibernate.SQL: debug

@@ -26,7 +26,7 @@ Java 21, Spring Boot, PostgreSQL, Flyway, Kafka, Docker, React.
 
 ```bash
 docker compose up -d
-cd platform
+cd order-service
 ./mvnw spring-boot:run
 ```
 

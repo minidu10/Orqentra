@@ -1,15 +1,29 @@
 services:
-  postgres:
+  order-db:
     image: postgres:16
-    container_name: orqentra-postgres
+    container_name: orqentra-order-db
     environment:
-      POSTGRES_DB: orqentra
+      POSTGRES_DB: orders
       POSTGRES_USER: orqentra
       POSTGRES_PASSWORD: orqentra
     ports:
+      # 5432 and 5433 are taken by the native PostgreSQL 17 and 18 installs on this machine
       - "5434:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - orderdata:/var/lib/postgresql/data
+
+  inventory-db:
+    image: postgres:16
+    container_name: orqentra-inventory-db
+    environment:
+      POSTGRES_DB: inventory
+      POSTGRES_USER: orqentra
+      POSTGRES_PASSWORD: orqentra
+    ports:
+      - "5435:5432"
+    volumes:
+      - inventorydata:/var/lib/postgresql/data
 
 volumes:
-  pgdata:
+  orderdata:
+  inventorydata:
