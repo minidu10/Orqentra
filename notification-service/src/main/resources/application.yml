@@ -1,0 +1,32 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: orqentra-notification-service
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # Wrapping the Jackson deserializer keeps a bad payload from killing the container.
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+        spring.json.trusted.packages: "com.orqentra.*"
+        spring.json.type.mapping: "orderCreated:com.orqentra.notification.events.OrderCreatedEvent,stockReserved:com.orqentra.notification.events.StockReservedEvent,stockRejected:com.orqentra.notification.events.StockRejectedEvent,paymentSucceeded:com.orqentra.notification.events.PaymentSucceededEvent,paymentFailed:com.orqentra.notification.events.PaymentFailedEvent,stockReleaseRequested:com.orqentra.notification.events.StockReleaseRequestedEvent"
+
+orqentra:
+  jwt:
+    secret: ${ORQENTRA_JWT_SECRET:dev-only-secret-change-me-in-production-0123456789}
+  stream:
+    # Long enough that a browser tab left open does not churn through reconnects.
+    timeout: PT30M
+    heartbeat-interval: PT20S
+
+logging:
+  pattern:
+    level: "%5p [%X{requestId:-no-request-id}]"
+  level:
+    com.orqentra.notification: info

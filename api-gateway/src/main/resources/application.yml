@@ -1,0 +1,43 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: orqentra-api-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+orqentra:
+  jwt:
+    # Same property name and secret as every service. The gateway verifies locally too;
+    # it does not call the auth service to check a token.
+    secret: ${ORQENTRA_JWT_SECRET:dev-only-secret-change-me-in-production-0123456789}
+
+  gateway:
+    # Longest matching prefix wins, so /api/admin resolves before a shorter /api rule.
+    # Base URLs are configuration, not literals, so they can be pointed at container
+    # hostnames later without touching code.
+    routes:
+      "[/api/auth]": ${AUTH_SERVICE_URL:http://localhost:8083}
+      "[/api/orders]": ${ORDER_SERVICE_URL:http://localhost:8084}
+      "[/api/admin]": ${ORDER_SERVICE_URL:http://localhost:8084}
+      "[/api/inventory]": ${INVENTORY_SERVICE_URL:http://localhost:8081}
+      "[/api/payments]": ${PAYMENT_SERVICE_URL:http://localhost:8082}
+      "[/api/notifications]": ${NOTIFICATION_SERVICE_URL:http://localhost:8085}
+
+    cors:
+      allowed-origins:
+        - ${UI_ORIGIN_VITE:http://localhost:5173}
+        - ${UI_ORIGIN_CRA:http://localhost:3000}
+      max-age: PT30M
+
+    rate-limit:
+      # ~5 requests a second with a burst of 10, low enough to demonstrate by hand.
+      replenish-rate: 5
+      burst-capacity: 10
+
+logging:
+  level:
+    com.orqentra.gateway: info

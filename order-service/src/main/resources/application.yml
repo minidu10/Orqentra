@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 8084
 
 spring:
   application:
@@ -48,5 +48,7 @@ orqentra:
     secret: ${ORQENTRA_JWT_SECRET:dev-only-secret-change-me-in-production-0123456789}
 
 logging:
+  pattern:
+    level: "%5p [%X{requestId:-no-request-id}]"
   level:
     org.hibernate.SQL: debug

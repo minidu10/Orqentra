@@ -1,44 +1,22 @@
-@auth = http://localhost:8083
-@order = http://localhost:8080
-@inventory = http://localhost:8081
-@payment = http://localhost:8082
+@gateway = http://localhost:8080
 
-# Seeded dev accounts (passwords are dev-only, hashes are seeded as BCrypt):
+# Everything goes through the gateway on 8080. The services still listen on their own
+# ports on a dev machine, but nothing here needs them except the defence-in-depth check
+# in the last section.
+#
+# Seeded dev accounts:
 #   alice@orqentra.test / alice-pass  -> RESTAURANT, Alice Trattoria
 #   bob@orqentra.test   / bob-pass    -> RESTAURANT, Bob Bistro
 #   admin@orqentra.test / admin-pass  -> ADMIN
 #
-# The saga resolves asynchronously: a POST returns PENDING and a GET run immediately after
-# may still show PENDING or AWAITING_PAYMENT. Re-run the GET to see the final state.
-#
-# The order's restaurant comes from the token's restaurantRef claim. There is no
-# restaurantId field in the request body any more, so it cannot be spoofed.
+# The saga resolves asynchronously: a POST returns PENDING and a GET straight after may
+# still show PENDING or AWAITING_PAYMENT. Re-run the GET to see the final state.
 
 ### ==================== Auth ====================
 
-### Register a brand new restaurant
-POST {{auth}}/api/auth/register
-Content-Type: application/json
-
-{
-  "email": "carol@orqentra.test",
-  "password": "carol-pass",
-  "restaurantName": "Carol Cafe"
-}
-
-### Registering the same email again -> 409
-POST {{auth}}/api/auth/register
-Content-Type: application/json
-
-{
-  "email": "carol@orqentra.test",
-  "password": "carol-pass",
-  "restaurantName": "Carol Cafe Again"
-}
-
 ### Log in as restaurant A (Alice)
 # @name login
-POST {{auth}}/api/auth/login
+POST {{gateway}}/api/auth/login
 Content-Type: application/json
 
 {
@@ -48,7 +26,7 @@ Content-Type: application/json
 
 ### Log in as restaurant B (Bob)
 # @name loginB
-POST {{auth}}/api/auth/login
+POST {{gateway}}/api/auth/login
 Content-Type: application/json
 
 {
@@ -58,7 +36,7 @@ Content-Type: application/json
 
 ### Log in as the admin
 # @name loginAdmin
-POST {{auth}}/api/auth/login
+POST {{gateway}}/api/auth/login
 Content-Type: application/json
 
 {
@@ -66,48 +44,51 @@ Content-Type: application/json
   "password": "admin-pass"
 }
 
+### Register a new restaurant
+POST {{gateway}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "dave@orqentra.test",
+  "password": "dave-pass",
+  "restaurantName": "Dave Diner"
+}
+
 ### Who am I
-GET {{auth}}/api/auth/me
+GET {{gateway}}/api/auth/me
 Authorization: Bearer {{login.response.body.$.token}}
 
-### Wrong password -> 401, identical body to the unknown-email case below
-POST {{auth}}/api/auth/login
-Content-Type: application/json
+### ==================== Rejected at the edge ====================
 
-{
-  "email": "alice@orqentra.test",
-  "password": "not-the-password"
-}
+### No token -> 401 ProblemDetail, from the gateway. Never reaches the order service.
+GET {{gateway}}/api/orders
 
-### Unknown email -> 401, same body, so registered emails cannot be discovered
-POST {{auth}}/api/auth/login
-Content-Type: application/json
-
-{
-  "email": "nobody@orqentra.test",
-  "password": "not-the-password"
-}
-
-### ==================== Negative cases ====================
-
-### No token at all -> 401 ProblemDetail
-GET {{order}}/api/orders
-
-### Malformed token -> 401 ProblemDetail
-GET {{order}}/api/orders
+### Malformed token -> 401 ProblemDetail, from the gateway
+GET {{gateway}}/api/orders
 Authorization: Bearer not-a-real-token
 
-### ==================== The saga, authenticated ====================
+### RESTAURANT token on an admin route -> 403 at the edge
+GET {{gateway}}/api/admin/dlq/topics
+Authorization: Bearer {{login.response.body.$.token}}
+
+### CORS preflight. Expect exactly one Access-Control-Allow-Origin header.
+OPTIONS {{gateway}}/api/orders
+Origin: http://localhost:5173
+Access-Control-Request-Method: POST
+Access-Control-Request-Headers: authorization,content-type
+
+### ==================== The saga, through the gateway ====================
 
 ### Stock before, SKU-001
-GET {{inventory}}/api/inventory/SKU-001
+GET {{gateway}}/api/inventory/SKU-001
 Authorization: Bearer {{login.response.body.$.token}}
 
-### Place a small order as restaurant A -> 201 PENDING, no restaurantId in the body
+### Place a small order. X-Request-Id is echoed back and follows the saga into Kafka.
 # @name smallOrder
-POST {{order}}/api/orders
+POST {{gateway}}/api/orders
 Authorization: Bearer {{login.response.body.$.token}}
 Content-Type: application/json
+X-Request-Id: demo-request-0001
 
 {
   "items": [
@@ -115,27 +96,27 @@ Content-Type: application/json
   ]
 }
 
-### Read it back -> CONFIRMED, restaurantId matches the token's restaurantRef
-GET {{order}}/api/orders/{{smallOrder.response.body.$.reference}}
+### Read it back -> CONFIRMED
+GET {{gateway}}/api/orders/{{smallOrder.response.body.$.reference}}
 Authorization: Bearer {{login.response.body.$.token}}
 
 ### Stock reduced by 2
-GET {{inventory}}/api/inventory/SKU-001
+GET {{gateway}}/api/inventory/SKU-001
 Authorization: Bearer {{login.response.body.$.token}}
 
 ### Payment record -> SUCCEEDED
-GET {{payment}}/api/payments/{{smallOrder.response.body.$.reference}}
+GET {{gateway}}/api/payments/{{smallOrder.response.body.$.reference}}
 Authorization: Bearer {{login.response.body.$.token}}
 
-### This restaurant's own orders, most recent first
-GET {{order}}/api/orders?page=0&size=10
+### This restaurant's own orders
+GET {{gateway}}/api/orders?page=0&size=10
 Authorization: Bearer {{login.response.body.$.token}}
 
 ### ==================== Compensation ====================
 
-### Place a large order (62500, over the decline threshold)
+### Large order (62500, over the decline threshold)
 # @name largeOrder
-POST {{order}}/api/orders
+POST {{gateway}}/api/orders
 Authorization: Bearer {{login.response.body.$.token}}
 Content-Type: application/json
 
@@ -146,43 +127,90 @@ Content-Type: application/json
 }
 
 ### Read it back -> CANCELLED, "Amount exceeds card limit"
-GET {{order}}/api/orders/{{largeOrder.response.body.$.reference}}
+GET {{gateway}}/api/orders/{{largeOrder.response.body.$.reference}}
 Authorization: Bearer {{login.response.body.$.token}}
 
-### Stock returned to its pre-order level by the release
-GET {{inventory}}/api/inventory/SKU-001
+### Stock back to its pre-order level
+GET {{gateway}}/api/inventory/SKU-001
 Authorization: Bearer {{login.response.body.$.token}}
 
 ### ==================== Cross-tenant ====================
 
-### Restaurant B asks for restaurant A's order -> 404, not 403.
-# A 403 would confirm the reference exists, which is enough to enumerate other tenants.
-GET {{order}}/api/orders/{{smallOrder.response.body.$.reference}}
+### Bob asks for Alice's order -> 404, not 403
+GET {{gateway}}/api/orders/{{smallOrder.response.body.$.reference}}
 Authorization: Bearer {{loginB.response.body.$.token}}
-
-### The admin can read the same order -> 200
-GET {{order}}/api/orders/{{smallOrder.response.body.$.reference}}
-Authorization: Bearer {{loginAdmin.response.body.$.token}}
 
 ### ==================== Admin ====================
 
-### Dead letter topics with a RESTAURANT token -> 403
-GET {{order}}/api/admin/dlq/topics
-Authorization: Bearer {{login.response.body.$.token}}
-
 ### Dead letter topics with an ADMIN token -> 200
-GET {{order}}/api/admin/dlq/topics
+GET {{gateway}}/api/admin/dlq/topics
 Authorization: Bearer {{loginAdmin.response.body.$.token}}
 
 ### Messages in a dead letter topic
-GET {{order}}/api/admin/dlq/order.created.dlq
+GET {{gateway}}/api/admin/dlq/order.created.dlq
 Authorization: Bearer {{loginAdmin.response.body.$.token}}
 
-### Replay a dead letter topic back to its original.
-# Safe because every listener claims the eventId in the same transaction as its work.
-POST {{order}}/api/admin/dlq/order.created.dlq/replay
+### Stuck orders
+GET {{gateway}}/api/admin/stuck-orders
 Authorization: Bearer {{loginAdmin.response.body.$.token}}
 
-### Orders stuck in a non-terminal state
-GET {{order}}/api/admin/stuck-orders
+### ==================== Rate limit ====================
+
+# Configured at ~5/sec with a burst of 10. Send this repeatedly in quick succession and
+# it turns into a 429 ProblemDetail once the bucket empties.
+GET {{gateway}}/api/inventory/SKU-001
+Authorization: Bearer {{login.response.body.$.token}}
+
+### Login is rate limited by client IP, since there is no identity to key on yet
+POST {{gateway}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "alice@orqentra.test",
+  "password": "alice-pass"
+}
+
+### ==================== Live updates (SSE) ====================
+
+# The stream stays open: REST Client shows events as they arrive and the request never
+# completes. Stop it manually. To watch it in a terminal instead, run watch-stream.ps1,
+# which uses curl.exe -N so output is not buffered.
+#
+# The restaurant is taken from the token, never from a query parameter, so a client can
+# only ever receive its own orders. An ADMIN token subscribes to every restaurant.
+#
+# Event names are what the client cares about (order.status, stock.released), not the
+# internal topic names, so the browser is not coupled to the saga's decomposition.
+
+### Subscribe to the live order stream
+GET {{gateway}}/api/notifications/stream
+Authorization: Bearer {{login.response.body.$.token}}
+Accept: text/event-stream
+
+### Subscribe with no token -> 401 at the gateway
+GET {{gateway}}/api/notifications/stream
+Accept: text/event-stream
+
+### Subscribe as the admin -> receives every restaurant's events
+GET {{gateway}}/api/notifications/stream
 Authorization: Bearer {{loginAdmin.response.body.$.token}}
+Accept: text/event-stream
+
+### Open connections and known order mappings
+GET {{gateway}}/api/notifications/stats
+Authorization: Bearer {{login.response.body.$.token}}
+
+### ==================== Direct to service: defence in depth only ====================
+
+# These bypass the gateway deliberately. On a dev machine the services are reachable on
+# their own ports; in a real deployment they would sit on an internal network with only
+# the gateway exposed. Either way each service verifies the JWT itself, so an invalid
+# token is refused here too.
+
+### Invalid token straight to the order service on 8084 -> must still be 401
+GET http://localhost:8084/api/orders
+Authorization: Bearer not-a-real-token
+
+### Valid token straight to the order service -> 200, the service trusts the token, not the caller
+GET http://localhost:8084/api/orders
+Authorization: Bearer {{login.response.body.$.token}}

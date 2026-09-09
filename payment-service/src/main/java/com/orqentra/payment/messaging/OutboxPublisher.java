@@ -51,6 +51,11 @@ public class OutboxPublisher {
             // name is set by hand: the same header the Jackson deserializer reads back.
             record.headers().add("__TypeId__", event.getTypeName().getBytes(StandardCharsets.UTF_8));
 
+            if (event.getRequestId() != null) {
+                record.headers().add("X-Request-Id",
+                        event.getRequestId().getBytes(StandardCharsets.UTF_8));
+            }
+
             try {
                 kafkaTemplate.send(record).get(10, TimeUnit.SECONDS);
             } catch (InterruptedException ex) {

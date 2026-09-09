@@ -23,5 +23,7 @@ orqentra:
     ttl: PT1H
 
 logging:
+  pattern:
+    level: "%5p [%X{requestId:-no-request-id}]"
   level:
     org.hibernate.SQL: debug

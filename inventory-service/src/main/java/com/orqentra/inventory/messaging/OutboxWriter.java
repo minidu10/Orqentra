@@ -1,5 +1,6 @@
 package com.orqentra.inventory.messaging;
 
+import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 
 import tools.jackson.databind.ObjectMapper;
@@ -23,6 +24,9 @@ public class OutboxWriter {
     public void append(String topic, String key, String eventId, Object event) {
         String typeName = EventTypes.logicalNameFor(event.getClass());
         String payload = objectMapper.writeValueAsString(event);
-        repository.save(new OutboxEvent(eventId, topic, key, payload, typeName));
+        // Stored with the event so the correlation id survives the hop into Kafka
+        // and can be restored by whichever service consumes it.
+        String requestId = MDC.get("requestId");
+        repository.save(new OutboxEvent(eventId, topic, key, payload, typeName, requestId));
     }
 }

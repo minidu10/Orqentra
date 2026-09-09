@@ -32,6 +32,9 @@ public class OutboxEvent {
     @Column(name = "type_name", nullable = false)
     private String typeName;
 
+    @Column(name = "request_id")
+    private String requestId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -40,12 +43,14 @@ public class OutboxEvent {
 
     protected OutboxEvent() {}
 
-    public OutboxEvent(String eventId, String topic, String messageKey, String payload, String typeName) {
+    public OutboxEvent(String eventId, String topic, String messageKey, String payload,
+                       String typeName, String requestId) {
         this.eventId = eventId;
         this.topic = topic;
         this.messageKey = messageKey;
         this.payload = payload;
         this.typeName = typeName;
+        this.requestId = requestId;
     }
 
     public void markPublished() {
@@ -58,6 +63,7 @@ public class OutboxEvent {
     public String getMessageKey() { return messageKey; }
     public String getPayload() { return payload; }
     public String getTypeName() { return typeName; }
+    public String getRequestId() { return requestId; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getPublishedAt() { return publishedAt; }
 }

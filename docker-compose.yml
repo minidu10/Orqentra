@@ -48,6 +48,14 @@ services:
     volumes:
       - authdata:/var/lib/postgresql/data
 
+  redis:
+    image: redis:7-alpine
+    container_name: orqentra-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
   redpanda:
     image: redpandadata/redpanda:v24.2.7
     container_name: orqentra-redpanda
@@ -82,3 +90,4 @@ volumes:
   redpandadata:
   paymentdata:
   authdata:
+  redisdata:
