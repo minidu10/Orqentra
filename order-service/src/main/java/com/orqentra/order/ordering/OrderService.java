@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.orqentra.order.catalog.CatalogService;
 import com.orqentra.order.events.EventPublisher;
 import com.orqentra.order.events.OrderCreatedEvent;
+import com.orqentra.order.events.StockReleaseRequestedEvent;
 import com.orqentra.order.events.Topics;
 
 @Service
@@ -52,37 +53,68 @@ public class OrderService {
             order.addItem(line.sku(), line.quantity(), unitPrice);
         }
 
-        // The order is saved PENDING. Inventory decides the outcome asynchronously, so
-        // placing an order no longer depends on the inventory service being up.
         orders.save(order);
 
         events.publish(Topics.ORDER_CREATED, order.getReference(), new OrderCreatedEvent(
                 UUID.randomUUID().toString(),
                 order.getReference(),
                 order.getRestaurantId(),
+                order.getTotal(),
                 eventItems));
 
         return OrderResponse.from(order);
     }
 
     @Transactional
-    public void markConfirmed(String reference) {
-        orders.findByReference(reference)
-                .orElseThrow(() -> new UnknownOrderException(reference))
-                .confirm();
+    public void markAwaitingPayment(String reference) {
+        require(reference).awaitPayment();
     }
 
     @Transactional
-    public void markCancelled(String reference) {
-        orders.findByReference(reference)
-                .orElseThrow(() -> new UnknownOrderException(reference))
-                .cancel();
+    public void markConfirmed(String reference) {
+        require(reference).confirm();
+    }
+
+    /**
+     * Cancels after a stock rejection. No release is published: nothing was ever deducted,
+     * and restoring stock that was never taken would inflate the inventory.
+     */
+    @Transactional
+    public void cancelForRejectedStock(String reference, String reason) {
+        require(reference).cancel(reason);
+    }
+
+    /**
+     * Cancels after a payment failure and asks inventory to give the stock back. The
+     * deduction is already committed in the inventory service's own database, so only an
+     * opposite action can undo it. Items come from this service's own tables, since the
+     * order service owns them.
+     */
+    @Transactional
+    public void cancelForFailedPayment(String reference, String reason) {
+        Order order = orders.findByReferenceWithItems(reference)
+                .orElseThrow(() -> new UnknownOrderException(reference));
+
+        order.cancel(reason);
+
+        List<StockReleaseRequestedEvent.Item> items = order.getItems().stream()
+                .map(i -> new StockReleaseRequestedEvent.Item(i.getSku(), i.getQuantity()))
+                .toList();
+
+        events.publish(Topics.STOCK_RELEASE_REQUESTED, reference,
+                new StockReleaseRequestedEvent(UUID.randomUUID().toString(),
+                        reference, items, reason));
     }
 
     @Transactional(readOnly = true)
     public OrderResponse byReference(String reference) {
         return orders.findByReferenceWithItems(reference)
                 .map(OrderResponse::from)
+                .orElseThrow(() -> new UnknownOrderException(reference));
+    }
+
+    private Order require(String reference) {
+        return orders.findByReference(reference)
                 .orElseThrow(() -> new UnknownOrderException(reference));
     }
 }

@@ -8,6 +8,7 @@ public record OrderResponse(
         String restaurantId,
         String status,
         BigDecimal total,
+        String cancellationReason,
         List<Line> items) {
 
     public record Line(String sku, int quantity, BigDecimal unitPrice) {}
@@ -22,6 +23,7 @@ public record OrderResponse(
                 order.getRestaurantId(),
                 order.getStatus().name(),
                 order.getTotal(),
+                order.getCancellationReason(),
                 lines);
     }
 }

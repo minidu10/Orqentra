@@ -27,6 +27,9 @@ public class Order {
     @Column(nullable = false)
     private BigDecimal total;
 
+    @Column(name = "cancellation_reason")
+    private String cancellationReason;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Instant createdAt;
 
@@ -47,14 +50,21 @@ public class Order {
         total = total.add(unitPrice.multiply(BigDecimal.valueOf(quantity)));
     }
 
+    public void awaitPayment() { this.status = OrderStatus.AWAITING_PAYMENT; }
+
     public void confirm() { this.status = OrderStatus.CONFIRMED; }
-    public void cancel()  { this.status = OrderStatus.CANCELLED; }
+
+    public void cancel(String reason) {
+        this.status = OrderStatus.CANCELLED;
+        this.cancellationReason = reason;
+    }
 
     public Long getId() { return id; }
     public String getReference() { return reference; }
     public String getRestaurantId() { return restaurantId; }
     public OrderStatus getStatus() { return status; }
     public BigDecimal getTotal() { return total; }
+    public String getCancellationReason() { return cancellationReason; }
     public Instant getCreatedAt() { return createdAt; }
     public List<OrderItem> getItems() { return items; }
 }
