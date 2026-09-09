@@ -22,6 +22,7 @@ orqentra:
     routes:
       "[/api/auth]": ${AUTH_SERVICE_URL:http://localhost:8083}
       "[/api/orders]": ${ORDER_SERVICE_URL:http://localhost:8084}
+      "[/api/products]": ${ORDER_SERVICE_URL:http://localhost:8084}
       "[/api/admin]": ${ORDER_SERVICE_URL:http://localhost:8084}
       "[/api/inventory]": ${INVENTORY_SERVICE_URL:http://localhost:8081}
       "[/api/payments]": ${PAYMENT_SERVICE_URL:http://localhost:8082}
