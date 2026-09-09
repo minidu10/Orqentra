@@ -38,9 +38,9 @@ The API is served on `http://localhost:8080`.
 - [x] Catalog with Flyway-managed schema
 - [x] Order placement inside a single transaction
 - [x] Split Order and Inventory over HTTP
-- [ ] Replace the HTTP call with Kafka events
-- [ ] Saga with compensating transactions
-- [ ] Idempotent consumers and transactional outbox
-- [ ] Retries and dead letter queue
+- [x] Replace the HTTP call with Kafka events
+- [x] Saga with compensating transactions
+- [x] Idempotent consumers and transactional outbox
+- [x] Retries and dead letter queue
 - [ ] Auth, API gateway, React UI
 - [ ] Tracing and metrics

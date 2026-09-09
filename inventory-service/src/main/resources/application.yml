@@ -36,6 +36,13 @@ spring:
         spring.json.trusted.packages: "com.orqentra.*"
         spring.json.type.mapping: "orderCreated:com.orqentra.inventory.events.OrderCreatedEvent,stockReserved:com.orqentra.inventory.events.StockReservedEvent,stockRejected:com.orqentra.inventory.events.StockRejectedEvent,paymentSucceeded:com.orqentra.inventory.events.PaymentSucceededEvent,paymentFailed:com.orqentra.inventory.events.PaymentFailedEvent,stockReleaseRequested:com.orqentra.inventory.events.StockReleaseRequestedEvent"
 
+orqentra:
+  jwt:
+    # Verified locally in every service. A shared symmetric secret is a deliberate
+    # simplification for this phase; production would sign asymmetrically and publish a
+    # JWKS endpoint so only the auth service holds the private key.
+    secret: ${ORQENTRA_JWT_SECRET:dev-only-secret-change-me-in-production-0123456789}
+
 logging:
   level:
     org.hibernate.SQL: debug

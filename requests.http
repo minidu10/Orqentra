@@ -1,106 +1,188 @@
+@auth = http://localhost:8083
 @order = http://localhost:8080
 @inventory = http://localhost:8081
 @payment = http://localhost:8082
 
-# The saga resolves asynchronously. A POST always returns PENDING, and a GET run
-# immediately afterwards may still show PENDING or AWAITING_PAYMENT. Re-run the GET a
-# moment later to see the final CONFIRMED or CANCELLED state.
+# Seeded dev accounts (passwords are dev-only, hashes are seeded as BCrypt):
+#   alice@orqentra.test / alice-pass  -> RESTAURANT, Alice Trattoria
+#   bob@orqentra.test   / bob-pass    -> RESTAURANT, Bob Bistro
+#   admin@orqentra.test / admin-pass  -> ADMIN
 #
-# Flow: order.created -> stock.reserved -> payment.succeeded  => CONFIRMED
-#                                       -> payment.failed     => CANCELLED + stock.release.requested
-#       order.created -> stock.rejected                        => CANCELLED (nothing to release)
+# The saga resolves asynchronously: a POST returns PENDING and a GET run immediately after
+# may still show PENDING or AWAITING_PAYMENT. Re-run the GET to see the final state.
+#
+# The order's restaurant comes from the token's restaurantRef claim. There is no
+# restaurantId field in the request body any more, so it cannot be spoofed.
 
-### Stock before, SKU-001
-GET {{inventory}}/api/inventory/SKU-001
+### ==================== Auth ====================
 
-### Stock before, SKU-003
-GET {{inventory}}/api/inventory/SKU-003
-
-### ---------- Happy path: 25000, under the 50000 decline threshold ----------
-
-### Place a small order -> 201 PENDING
-# @name smallOrder
-POST {{order}}/api/orders
+### Register a brand new restaurant
+POST {{auth}}/api/auth/register
 Content-Type: application/json
 
 {
-  "restaurantId": "REST-42",
+  "email": "carol@orqentra.test",
+  "password": "carol-pass",
+  "restaurantName": "Carol Cafe"
+}
+
+### Registering the same email again -> 409
+POST {{auth}}/api/auth/register
+Content-Type: application/json
+
+{
+  "email": "carol@orqentra.test",
+  "password": "carol-pass",
+  "restaurantName": "Carol Cafe Again"
+}
+
+### Log in as restaurant A (Alice)
+# @name login
+POST {{auth}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "alice@orqentra.test",
+  "password": "alice-pass"
+}
+
+### Log in as restaurant B (Bob)
+# @name loginB
+POST {{auth}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "bob@orqentra.test",
+  "password": "bob-pass"
+}
+
+### Log in as the admin
+# @name loginAdmin
+POST {{auth}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@orqentra.test",
+  "password": "admin-pass"
+}
+
+### Who am I
+GET {{auth}}/api/auth/me
+Authorization: Bearer {{login.response.body.$.token}}
+
+### Wrong password -> 401, identical body to the unknown-email case below
+POST {{auth}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "alice@orqentra.test",
+  "password": "not-the-password"
+}
+
+### Unknown email -> 401, same body, so registered emails cannot be discovered
+POST {{auth}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "nobody@orqentra.test",
+  "password": "not-the-password"
+}
+
+### ==================== Negative cases ====================
+
+### No token at all -> 401 ProblemDetail
+GET {{order}}/api/orders
+
+### Malformed token -> 401 ProblemDetail
+GET {{order}}/api/orders
+Authorization: Bearer not-a-real-token
+
+### ==================== The saga, authenticated ====================
+
+### Stock before, SKU-001
+GET {{inventory}}/api/inventory/SKU-001
+Authorization: Bearer {{login.response.body.$.token}}
+
+### Place a small order as restaurant A -> 201 PENDING, no restaurantId in the body
+# @name smallOrder
+POST {{order}}/api/orders
+Authorization: Bearer {{login.response.body.$.token}}
+Content-Type: application/json
+
+{
   "items": [
     { "sku": "SKU-001", "quantity": 2 }
   ]
 }
 
-### Read it back -> CONFIRMED
+### Read it back -> CONFIRMED, restaurantId matches the token's restaurantRef
 GET {{order}}/api/orders/{{smallOrder.response.body.$.reference}}
+Authorization: Bearer {{login.response.body.$.token}}
 
 ### Stock reduced by 2
 GET {{inventory}}/api/inventory/SKU-001
+Authorization: Bearer {{login.response.body.$.token}}
 
 ### Payment record -> SUCCEEDED
 GET {{payment}}/api/payments/{{smallOrder.response.body.$.reference}}
+Authorization: Bearer {{login.response.body.$.token}}
 
-### ---------- Compensation path: 62500, over the decline threshold ----------
+### This restaurant's own orders, most recent first
+GET {{order}}/api/orders?page=0&size=10
+Authorization: Bearer {{login.response.body.$.token}}
 
-### Place a large order -> 201 PENDING
+### ==================== Compensation ====================
+
+### Place a large order (62500, over the decline threshold)
 # @name largeOrder
 POST {{order}}/api/orders
+Authorization: Bearer {{login.response.body.$.token}}
 Content-Type: application/json
 
 {
-  "restaurantId": "REST-42",
   "items": [
     { "sku": "SKU-001", "quantity": 5 }
   ]
 }
 
-### Read it back -> CANCELLED, cancellationReason "Amount exceeds card limit"
+### Read it back -> CANCELLED, "Amount exceeds card limit"
 GET {{order}}/api/orders/{{largeOrder.response.body.$.reference}}
+Authorization: Bearer {{login.response.body.$.token}}
 
-### Stock back to where it was: deducted on reservation, restored by the release
+### Stock returned to its pre-order level by the release
 GET {{inventory}}/api/inventory/SKU-001
+Authorization: Bearer {{login.response.body.$.token}}
 
-### Payment record -> FAILED
-GET {{payment}}/api/payments/{{largeOrder.response.body.$.reference}}
+### ==================== Cross-tenant ====================
 
-### ---------- Rejection path: more stock than exists, no release ----------
+### Restaurant B asks for restaurant A's order -> 404, not 403.
+# A 403 would confirm the reference exists, which is enough to enumerate other tenants.
+GET {{order}}/api/orders/{{smallOrder.response.body.$.reference}}
+Authorization: Bearer {{loginB.response.body.$.token}}
 
-### Order 999 of SKU-003 -> 201 PENDING
-# @name rejectedOrder
-POST {{order}}/api/orders
-Content-Type: application/json
+### The admin can read the same order -> 200
+GET {{order}}/api/orders/{{smallOrder.response.body.$.reference}}
+Authorization: Bearer {{loginAdmin.response.body.$.token}}
 
-{
-  "restaurantId": "REST-42",
-  "items": [
-    { "sku": "SKU-003", "quantity": 999 }
-  ]
-}
+### ==================== Admin ====================
 
-### Read it back -> CANCELLED with a stock reason
-GET {{order}}/api/orders/{{rejectedOrder.response.body.$.reference}}
-
-### SKU-003 unchanged: nothing was ever deducted, so nothing is released
-GET {{inventory}}/api/inventory/SKU-003
-
-### No payment was ever attempted -> 404
-GET {{payment}}/api/payments/{{rejectedOrder.response.body.$.reference}}
-
-### ==================== Phase 5: reliability ====================
-
-# Dead letter topics are named after the original with a .dlq suffix. A record lands there
-# after three attempts with exponential backoff, or immediately if its payload could never
-# be deserialised.
-
-### Dead letter topics and their message counts
+### Dead letter topics with a RESTAURANT token -> 403
 GET {{order}}/api/admin/dlq/topics
+Authorization: Bearer {{login.response.body.$.token}}
 
-### Messages in one dead letter topic, with the failure reason from the exception headers
+### Dead letter topics with an ADMIN token -> 200
+GET {{order}}/api/admin/dlq/topics
+Authorization: Bearer {{loginAdmin.response.body.$.token}}
+
+### Messages in a dead letter topic
 GET {{order}}/api/admin/dlq/order.created.dlq
+Authorization: Bearer {{loginAdmin.response.body.$.token}}
 
-### Replay a dead letter topic back to the topic it failed on.
-# Safe because every listener claims the eventId in the same transaction as its work, so a
-# replayed event that already succeeded is skipped rather than applied twice.
+### Replay a dead letter topic back to its original.
+# Safe because every listener claims the eventId in the same transaction as its work.
 POST {{order}}/api/admin/dlq/order.created.dlq/replay
+Authorization: Bearer {{loginAdmin.response.body.$.token}}
 
-### Orders stuck in a non-terminal state for longer than orders.stuck-after
+### Orders stuck in a non-terminal state
 GET {{order}}/api/admin/stuck-orders
+Authorization: Bearer {{loginAdmin.response.body.$.token}}

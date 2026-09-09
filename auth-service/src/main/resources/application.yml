@@ -1,0 +1,27 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: orqentra-auth-service
+  datasource:
+    url: jdbc:postgresql://localhost:5437/auth
+    username: orqentra
+    password: orqentra
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+
+orqentra:
+  jwt:
+    # Shared symmetric secret. Every service verifies locally with this same value, so no
+    # service has to call the auth service on the request path.
+    secret: ${ORQENTRA_JWT_SECRET:dev-only-secret-change-me-in-production-0123456789}
+    ttl: PT1H
+
+logging:
+  level:
+    org.hibernate.SQL: debug

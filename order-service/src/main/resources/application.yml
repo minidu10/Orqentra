@@ -40,6 +40,13 @@ orders:
   # A saga sitting in a non-terminal state longer than this is reported as stuck.
   stuck-after: PT2M
 
+orqentra:
+  jwt:
+    # Verified locally in every service. A shared symmetric secret is a deliberate
+    # simplification for this phase; production would sign asymmetrically and publish a
+    # JWKS endpoint so only the auth service holds the private key.
+    secret: ${ORQENTRA_JWT_SECRET:dev-only-secret-change-me-in-production-0123456789}
+
 logging:
   level:
     org.hibernate.SQL: debug

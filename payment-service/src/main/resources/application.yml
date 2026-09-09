@@ -41,6 +41,13 @@ payment:
   # triggered on demand by placing a large enough order.
   decline-above: 50000
 
+orqentra:
+  jwt:
+    # Verified locally in every service. A shared symmetric secret is a deliberate
+    # simplification for this phase; production would sign asymmetrically and publish a
+    # JWKS endpoint so only the auth service holds the private key.
+    secret: ${ORQENTRA_JWT_SECRET:dev-only-secret-change-me-in-production-0123456789}
+
 logging:
   level:
     org.hibernate.SQL: debug
