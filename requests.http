@@ -1,44 +1,71 @@
 @order = http://localhost:8080
 @inventory = http://localhost:8081
+@payment = http://localhost:8082
 
-### List products
-GET {{order}}/api/products
+# The saga resolves asynchronously. A POST always returns PENDING, and a GET run
+# immediately afterwards may still show PENDING or AWAITING_PAYMENT. Re-run the GET a
+# moment later to see the final CONFIRMED or CANCELLED state.
+#
+# Flow: order.created -> stock.reserved -> payment.succeeded  => CONFIRMED
+#                                       -> payment.failed     => CANCELLED + stock.release.requested
+#       order.created -> stock.rejected                        => CANCELLED (nothing to release)
 
-### Get one product
-GET {{order}}/api/products/SKU-001
-
-### Unknown product -> 404
-GET {{order}}/api/products/SKU-999
-
-### Stock for SKU-001 -> 100
+### Stock before, SKU-001
 GET {{inventory}}/api/inventory/SKU-001
 
-### Stock for SKU-003 -> 8 (deliberately low)
+### Stock before, SKU-003
 GET {{inventory}}/api/inventory/SKU-003
 
-### Place a valid order -> 201 CONFIRMED, total 29200.00
-# @name placeOrder
+### ---------- Happy path: 25000, under the 50000 decline threshold ----------
+
+### Place a small order -> 201 PENDING
+# @name smallOrder
 POST {{order}}/api/orders
 Content-Type: application/json
 
 {
   "restaurantId": "REST-42",
   "items": [
-    { "sku": "SKU-001", "quantity": 2 },
-    { "sku": "SKU-002", "quantity": 1 }
+    { "sku": "SKU-001", "quantity": 2 }
   ]
 }
 
-### Stock for SKU-001 again -> 98, proving the call crossed service boundaries
+### Read it back -> CONFIRMED
+GET {{order}}/api/orders/{{smallOrder.response.body.$.reference}}
+
+### Stock reduced by 2
 GET {{inventory}}/api/inventory/SKU-001
 
-### Read the order back
-GET {{order}}/api/orders/{{placeOrder.response.body.$.reference}}
+### Payment record -> SUCCEEDED
+GET {{payment}}/api/payments/{{smallOrder.response.body.$.reference}}
 
-### Unknown order -> 404
-GET {{order}}/api/orders/does-not-exist
+### ---------- Compensation path: 62500, over the decline threshold ----------
 
-### Order 999 of SKU-003 -> 409 Insufficient stock
+### Place a large order -> 201 PENDING
+# @name largeOrder
+POST {{order}}/api/orders
+Content-Type: application/json
+
+{
+  "restaurantId": "REST-42",
+  "items": [
+    { "sku": "SKU-001", "quantity": 5 }
+  ]
+}
+
+### Read it back -> CANCELLED, cancellationReason "Amount exceeds card limit"
+GET {{order}}/api/orders/{{largeOrder.response.body.$.reference}}
+
+### Stock back to where it was: deducted on reservation, restored by the release
+GET {{inventory}}/api/inventory/SKU-001
+
+### Payment record -> FAILED
+GET {{payment}}/api/payments/{{largeOrder.response.body.$.reference}}
+
+### ---------- Rejection path: more stock than exists, no release ----------
+
+### Order 999 of SKU-003 -> 201 PENDING
+# @name rejectedOrder
 POST {{order}}/api/orders
 Content-Type: application/json
 
@@ -49,56 +76,11 @@ Content-Type: application/json
   ]
 }
 
-### SKU-003 still 8 after the rejection
+### Read it back -> CANCELLED with a stock reason
+GET {{order}}/api/orders/{{rejectedOrder.response.body.$.reference}}
+
+### SKU-003 unchanged: nothing was ever deducted, so nothing is released
 GET {{inventory}}/api/inventory/SKU-003
 
-### Empty item list -> 400
-POST {{order}}/api/orders
-Content-Type: application/json
-
-{
-  "restaurantId": "REST-42",
-  "items": []
-}
-
-### Negative quantity -> 400
-POST {{order}}/api/orders
-Content-Type: application/json
-
-{
-  "restaurantId": "REST-42",
-  "items": [
-    { "sku": "SKU-001", "quantity": -3 }
-  ]
-}
-
-### Unknown SKU -> 404, before any stock is touched
-POST {{order}}/api/orders
-Content-Type: application/json
-
-{
-  "restaurantId": "REST-42",
-  "items": [
-    { "sku": "SKU-999", "quantity": 1 }
-  ]
-}
-
-### Direct deduction against the inventory service -> 204
-POST {{inventory}}/api/inventory/deductions
-Content-Type: application/json
-
-{
-  "items": [
-    { "sku": "SKU-002", "quantity": 5 }
-  ]
-}
-
-### Direct release, putting those 5 back -> 204
-POST {{inventory}}/api/inventory/releases
-Content-Type: application/json
-
-{
-  "items": [
-    { "sku": "SKU-002", "quantity": 5 }
-  ]
-}
+### No payment was ever attempted -> 404
+GET {{payment}}/api/payments/{{rejectedOrder.response.body.$.reference}}

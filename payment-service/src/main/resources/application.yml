@@ -1,0 +1,42 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: orqentra-payment-service
+  datasource:
+    url: jdbc:postgresql://localhost:5436/payments
+    username: orqentra
+    password: orqentra
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+      properties:
+        # The records are duplicated per service, so the wire carries a logical
+        # type name instead of a package-qualified class name.
+        spring.json.type.mapping: "orderCreated:com.orqentra.payment.events.OrderCreatedEvent,stockReserved:com.orqentra.payment.events.StockReservedEvent,stockRejected:com.orqentra.payment.events.StockRejectedEvent,paymentSucceeded:com.orqentra.payment.events.PaymentSucceededEvent,paymentFailed:com.orqentra.payment.events.PaymentFailedEvent,stockReleaseRequested:com.orqentra.payment.events.StockReleaseRequestedEvent"
+    consumer:
+      group-id: payment-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.orqentra.*"
+        spring.json.type.mapping: "orderCreated:com.orqentra.payment.events.OrderCreatedEvent,stockReserved:com.orqentra.payment.events.StockReservedEvent,stockRejected:com.orqentra.payment.events.StockRejectedEvent,paymentSucceeded:com.orqentra.payment.events.PaymentSucceededEvent,paymentFailed:com.orqentra.payment.events.PaymentFailedEvent,stockReleaseRequested:com.orqentra.payment.events.StockReleaseRequestedEvent"
+
+payment:
+  # Orders above this total are declined. Deterministic, so the compensation path can be
+  # triggered on demand by placing a large enough order.
+  decline-above: 50000
+
+logging:
+  level:
+    org.hibernate.SQL: debug

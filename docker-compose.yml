@@ -24,6 +24,48 @@ services:
     volumes:
       - inventorydata:/var/lib/postgresql/data
 
+  payment-db:
+    image: postgres:16
+    container_name: orqentra-payment-db
+    environment:
+      POSTGRES_DB: payments
+      POSTGRES_USER: orqentra
+      POSTGRES_PASSWORD: orqentra
+    ports:
+      - "5436:5432"
+    volumes:
+      - paymentdata:/var/lib/postgresql/data
+
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: orqentra-redpanda
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --overprovisioned
+      # Two listeners: containers on this network reach the broker as redpanda:29092,
+      # while apps on the host reach it as localhost:9092.
+      - --kafka-addr=PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:29092,OUTSIDE://localhost:9092
+    ports:
+      - "9092:9092"
+    volumes:
+      - redpandadata:/var/lib/redpanda/data
+
+  redpanda-console:
+    image: redpandadata/console:v2.7.2
+    container_name: orqentra-redpanda-console
+    depends_on:
+      - redpanda
+    environment:
+      KAFKA_BROKERS: redpanda:29092
+    ports:
+      # The console listens on 8080 internally, which the order service already owns here.
+      - "8090:8080"
+
 volumes:
   orderdata:
   inventorydata:
+  redpandadata:
+  paymentdata:

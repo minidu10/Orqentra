@@ -14,6 +14,23 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+      properties:
+        # The records are duplicated per service, so the wire carries a logical
+        # type name instead of a package-qualified class name.
+        spring.json.type.mapping: "orderCreated:com.orqentra.inventory.events.OrderCreatedEvent,stockReserved:com.orqentra.inventory.events.StockReservedEvent,stockRejected:com.orqentra.inventory.events.StockRejectedEvent,paymentSucceeded:com.orqentra.inventory.events.PaymentSucceededEvent,paymentFailed:com.orqentra.inventory.events.PaymentFailedEvent,stockReleaseRequested:com.orqentra.inventory.events.StockReleaseRequestedEvent"
+    consumer:
+      group-id: inventory-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.orqentra.*"
+        spring.json.type.mapping: "orderCreated:com.orqentra.inventory.events.OrderCreatedEvent,stockReserved:com.orqentra.inventory.events.StockReservedEvent,stockRejected:com.orqentra.inventory.events.StockRejectedEvent,paymentSucceeded:com.orqentra.inventory.events.PaymentSucceededEvent,paymentFailed:com.orqentra.inventory.events.PaymentFailedEvent,stockReleaseRequested:com.orqentra.inventory.events.StockReleaseRequestedEvent"
 
 logging:
   level:
