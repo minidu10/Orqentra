@@ -26,8 +26,9 @@ Java 21, Spring Boot, PostgreSQL, Flyway, Kafka, Docker, React.
 
 ```bash
 docker compose up -d
-cd order-service
-./mvnw spring-boot:run
+
+cd inventory-service && ./mvnw spring-boot:run   # port 8081
+cd order-service && ./mvnw spring-boot:run       # port 8080
 ```
 
 The API is served on `http://localhost:8080`.
@@ -35,8 +36,8 @@ The API is served on `http://localhost:8080`.
 ## Roadmap
 
 - [x] Catalog with Flyway-managed schema
-- [ ] Order placement inside a single transaction
-- [ ] Split Order and Inventory over HTTP
+- [x] Order placement inside a single transaction
+- [x] Split Order and Inventory over HTTP
 - [ ] Replace the HTTP call with Kafka events
 - [ ] Saga with compensating transactions
 - [ ] Idempotent consumers and transactional outbox
