@@ -1,5 +1,7 @@
 # Orqentra
 
+[![CI](https://github.com/minidu10/Orqentra/actions/workflows/ci.yml/badge.svg)](https://github.com/minidu10/Orqentra/actions/workflows/ci.yml)
+
 An event-driven B2B supply chain ordering platform. Restaurants browse supplier
 catalogs, place orders, and receive live confirmation as the order moves through
 the system.
@@ -120,6 +122,57 @@ The correlation id is still there and still separate: grep any service log for t
 `X-Request-Id` value to read the story in words, and use the trace to see the shape and
 the timings.
 
+## Testing
+
+Each backend service is a standalone Maven project with its own suite:
+
+```bash
+cd order-service && ./mvnw test   # same for inventory-service, payment-service, auth-service
+```
+
+Unit tests run in milliseconds with no external dependencies. Integration tests use
+[Testcontainers](https://testcontainers.com) — real Postgres, real Redpanda — started
+once per module and reused across test classes, so a full run per service takes under two
+minutes. Nothing is mocked at that layer: a mocked broker cannot tell you whether a
+listener's transaction boundary is actually correct.
+
+`e2e-tests/` is a fifth, independent Maven project that runs the order, inventory and
+payment services as three separate real processes against Testcontainers infrastructure
+and drives the saga end to end over real HTTP and real Kafka — happy path, payment
+compensation, and stock rejection, each asserting the final stock level exactly rather
+than only checking that an event was published.
+
+```bash
+cd inventory-service && ./mvnw -q -DskipTests package   # and payment-service, order-service
+cd e2e-tests && ./mvnw test
+```
+
+The frontend has its own suite with Vitest and Testing Library, covering the SSE frame
+parser and the orders hook's reconnect/resync behaviour:
+
+```bash
+cd web && npm test
+```
+
+All of the above run on every push and pull request — see the CI badge at the top of this
+file, or `.github/workflows/ci.yml`.
+
+## Load testing
+
+`load-test/` has a [k6](https://k6.io) script simulating restaurants placing orders
+through the gateway. Full details, methodology and thresholds are in
+`load-test/README.md`; the headline numbers, measured on one development laptop (13th Gen
+Intel Core i5-1335U, 16 GB RAM, Windows 11 — **not a production benchmark**) running the
+whole stack plus the load generator on that one machine:
+
+- 30 concurrent restaurants, ramped over 30s, held for 60s: **3,248 HTTP requests,
+  23.7 req/s, 0% failed**. p95 latency: 69ms (catalog), 64ms (stock), 80ms (place order).
+- **797 orders placed, 100% eventually confirmed.** Average saga latency — order accepted
+  to `CONFIRMED` — was **~3.2s**, dominated by the outbox poller's 1-second cycle repeated
+  across three sequential hops, not by HTTP or database work.
+- Peak Kafka consumer lag: 6 messages; peak outbox depth: 17 rows. Both drained to zero
+  within seconds of the load easing — nothing broke, but saga latency, not throughput, is
+  the number that would need attention before pushing concurrency further.
 
 ## Roadmap
 
@@ -132,3 +185,4 @@ the timings.
 - [x] Retries and dead letter queue
 - [x] Auth, API gateway, React UI
 - [x] Tracing and metrics
+- [x] Automated tests and CI

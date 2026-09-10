@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>com.orqentra</groupId>
+	<artifactId>e2e-tests</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+	<packaging>jar</packaging>
+	<name>e2e-tests</name>
+	<description>
+		Full-stack saga tests. Deliberately not part of any Maven reactor with the
+		services: each service is an independently built and deployed project (no parent
+		POM), and this module drives their built jars as separate processes rather than
+		reaching into their code, which is the only way to test them as what they actually
+		are — three independently deployable services talking over a real network.
+	</description>
+
+	<properties>
+		<maven.compiler.release>21</maven.compiler.release>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+	</properties>
+
+	<!--
+	  No Spring Boot parent: this module runs no Spring context of its own. The BOM is
+	  imported only so the library versions here (Testcontainers, JUnit, Jackson) match
+	  what the services themselves resolve to, without repeating version numbers.
+	-->
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-dependencies</artifactId>
+				<version>4.1.1</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.assertj</groupId>
+			<artifactId>assertj-core</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.awaitility</groupId>
+			<artifactId>awaitility</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>testcontainers</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>testcontainers-junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>testcontainers-postgresql</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>testcontainers-redpanda</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- Plain classic Jackson for request/response JSON: this module is not a Spring
+		     Boot application, so it is not subject to the services' Jackson 3 migration. -->
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- Signs a JWT locally with the shared dev secret, the same way TestJwts does in
+		     each service's own test suite. -->
+		<dependency>
+			<groupId>com.nimbusds</groupId>
+			<artifactId>nimbus-jose-jwt</artifactId>
+			<version>10.9.1</version>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>3.5.4</version>
+				<configuration>
+					<!-- Launching three JVMs and letting a saga run end to end is slower
+					     than a unit test; give it real room rather than a default 30s
+					     per-test surefire timeout tripping mid-saga. -->
+					<forkedProcessTimeoutInSeconds>600</forkedProcessTimeoutInSeconds>
+				</configuration>
+			</plugin>
+		</plugins>
+	</build>
+
+</project>

@@ -25,7 +25,9 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.kafka.autoconfigure.KafkaConnectionDetails;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.stereotype.Service;
@@ -42,8 +44,16 @@ public class DlqService {
     private final KafkaTemplate<String, byte[]> kafkaTemplate;
 
     public DlqService(@Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
-                      KafkaTemplate<String, byte[]> outboxKafkaTemplate) {
-        this.bootstrapServers = bootstrapServers;
+                      KafkaTemplate<String, byte[]> outboxKafkaTemplate,
+                      ObjectProvider<KafkaConnectionDetails> connectionDetails) {
+        // The property is the fallback. A KafkaConnectionDetails bean — from a
+        // @ServiceConnection container in tests, or a docker-compose-derived connection
+        // in dev — takes priority, the same way the auto-configured consumer and
+        // producer factories already prefer it over the plain property.
+        this.bootstrapServers = connectionDetails.stream()
+                .findFirst()
+                .map(details -> String.join(",", details.getBootstrapServers()))
+                .orElse(bootstrapServers);
         this.kafkaTemplate = outboxKafkaTemplate;
     }
 

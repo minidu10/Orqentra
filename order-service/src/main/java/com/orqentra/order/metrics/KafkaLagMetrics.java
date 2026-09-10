@@ -15,7 +15,9 @@ import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.kafka.autoconfigure.KafkaConnectionDetails;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -50,8 +52,16 @@ public class KafkaLagMetrics {
     private final Map<String, AtomicLong> dlqGauges = new ConcurrentHashMap<>();
 
     public KafkaLagMetrics(@Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
-                           MeterRegistry registry) {
-        this.bootstrapServers = bootstrapServers;
+                           MeterRegistry registry,
+                           ObjectProvider<KafkaConnectionDetails> connectionDetails) {
+        // Same fix as MessagingConfig and DlqService: the plain property is only the
+        // fallback. A KafkaConnectionDetails bean — a @ServiceConnection container in
+        // tests, or a docker-compose-derived connection in dev — takes priority, or this
+        // sampler quietly polls the wrong cluster forever, once every ten seconds.
+        this.bootstrapServers = connectionDetails.stream()
+                .findFirst()
+                .map(details -> String.join(",", details.getBootstrapServers()))
+                .orElse(bootstrapServers);
         this.registry = registry;
     }
 

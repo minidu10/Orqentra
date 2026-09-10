@@ -50,13 +50,36 @@ public class Order {
         total = total.add(unitPrice.multiply(BigDecimal.valueOf(quantity)));
     }
 
-    public void awaitPayment() { this.status = OrderStatus.AWAITING_PAYMENT; }
+    /**
+     * PENDING -&gt; AWAITING_PAYMENT -&gt; {CONFIRMED, CANCELLED} is the only path the saga
+     * ever drives. Guarding it here, on the entity, means every caller gets the check for
+     * free rather than each service method having to remember to ask first — including a
+     * redelivered event arriving after the order already reached a terminal state, which
+     * must never be allowed to move it again.
+     */
+    public void awaitPayment() {
+        requireFrom(OrderStatus.AWAITING_PAYMENT, OrderStatus.PENDING);
+        this.status = OrderStatus.AWAITING_PAYMENT;
+    }
 
-    public void confirm() { this.status = OrderStatus.CONFIRMED; }
+    public void confirm() {
+        requireFrom(OrderStatus.CONFIRMED, OrderStatus.AWAITING_PAYMENT);
+        this.status = OrderStatus.CONFIRMED;
+    }
 
     public void cancel(String reason) {
+        requireFrom(OrderStatus.CANCELLED, OrderStatus.PENDING, OrderStatus.AWAITING_PAYMENT);
         this.status = OrderStatus.CANCELLED;
         this.cancellationReason = reason;
+    }
+
+    private void requireFrom(OrderStatus target, OrderStatus... allowed) {
+        for (OrderStatus candidate : allowed) {
+            if (this.status == candidate) {
+                return;
+            }
+        }
+        throw new InvalidOrderTransitionException(this.status, target);
     }
 
     public Long getId() { return id; }

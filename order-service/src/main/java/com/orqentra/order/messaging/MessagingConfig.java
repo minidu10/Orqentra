@@ -7,6 +7,8 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.kafka.autoconfigure.KafkaConnectionDetails;
 import org.springframework.boot.kafka.autoconfigure.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -33,8 +35,19 @@ public class MessagingConfig {
      */
     @Bean
     KafkaTemplate<String, byte[]> outboxKafkaTemplate(KafkaProperties properties,
-                                                      ObservationRegistry observationRegistry) {
+                                                      ObservationRegistry observationRegistry,
+                                                      ObjectProvider<KafkaConnectionDetails> connectionDetails) {
         Map<String, Object> config = properties.buildProducerProperties();
+        // KafkaProperties.buildProducerProperties() only ever reads spring.kafka.* plain
+        // properties: it has no overload that consults a KafkaConnectionDetails bean.
+        // Boot's own auto-configured producer factory merges that bean in for you; a
+        // hand-built one like this does not get that for free. Without this, a
+        // @ServiceConnection container (or a docker-compose-derived connection) is
+        // silently ignored and this producer keeps talking to whatever
+        // spring.kafka.bootstrap-servers says instead — while the auto-configured
+        // consumer side connects correctly, producing a confusing split-brain where the
+        // app appears to consume fine but every publish vanishes into the wrong broker.
+        overrideBootstrapServers(config, connectionDetails);
         config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class);
         ProducerFactory<String, byte[]> factory = new DefaultKafkaProducerFactory<>(config);
@@ -59,7 +72,8 @@ public class MessagingConfig {
      * record then retries forever instead of being parked.
      */
     @Bean
-    KafkaTemplate<Object, Object> deadLetterKafkaTemplate(KafkaProperties properties) {
+    KafkaTemplate<Object, Object> deadLetterKafkaTemplate(KafkaProperties properties,
+                                                          ObjectProvider<KafkaConnectionDetails> connectionDetails) {
         JacksonJsonSerializer<Object> jsonSerializer = new JacksonJsonSerializer<>();
         Serializer<Object> valueSerializer = new Serializer<>() {
             @Override
@@ -89,6 +103,7 @@ public class MessagingConfig {
         };
 
         Map<String, Object> config = properties.buildProducerProperties();
+        overrideBootstrapServers(config, connectionDetails);
         config.remove(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG);
         config.remove(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG);
 
@@ -122,5 +137,11 @@ public class MessagingConfig {
                 MessageConversionException.class,
                 IllegalArgumentException.class);
         return handler;
+    }
+
+    private static void overrideBootstrapServers(Map<String, Object> config,
+                                                 ObjectProvider<KafkaConnectionDetails> connectionDetails) {
+        connectionDetails.ifAvailable(details ->
+                config.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, details.getBootstrapServers()));
     }
 }
